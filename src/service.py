@@ -2,7 +2,7 @@ from uuid import uuid4
 
 from .audit import AuditTrail
 from .domain import ConflictError, NotFoundError
-from .rules import RuleEngine
+from .rules import RuleEngine, zone_release_status
 
 
 class DomainService:
@@ -71,3 +71,49 @@ class DomainService:
 
     def audit_log(self, entity_id=None):
         return self.repository.list_audit(entity_id=entity_id)
+
+    def zone_detail(self, zone_id, as_of=None):
+        zone = self.repository.get_entity(zone_id)
+        if not zone or zone["kind"] != "zone":
+            raise NotFoundError("zone not found: " + str(zone_id))
+
+        def facility_view(fid, reason, role):
+            facility = self.repository.get_entity(fid)
+            return {
+                "facility_id": fid,
+                "name": facility["data"].get("name") if facility else None,
+                "address": facility["data"].get("address") if facility else None,
+                "exists": bool(facility),
+                "reason": reason,
+                "role": role,
+            }
+
+        data = zone["data"]
+        center_id = data.get("center_facility_id")
+        facilities = [
+            facility_view(center_id, "中心设施（检疫确认阳性）", "center")
+        ]
+        for item in data.get("facilities", []):
+            facilities.append(
+                facility_view(item.get("facility_id"), item.get("reason"), "included")
+            )
+        release = (
+            zone_release_status(data, as_of)
+            if zone["status"] == "active"
+            else {"eligible": True, "note": "zone already lifted"}
+        )
+        return {
+            "id": zone["id"],
+            "code": data.get("code"),
+            "status": zone["status"],
+            "version": zone["version"],
+            "declared_at": data.get("declared_at"),
+            "lifted_at": data.get("lifted_at"),
+            "registered_by": data.get("registered_by"),
+            "center_facility_id": center_id,
+            "facilities": facilities,
+            "positive_events": data.get("positive_events", []),
+            "release": release,
+            "created_at": zone["created_at"],
+            "updated_at": zone["updated_at"],
+        }

@@ -3,32 +3,326 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>植物病虫害检疫与传播追溯</title>
+  <title>植物病虫害检疫与传播追溯 · 疫区管理</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; color: #1f2937; }
-    main { max-width: 820px; margin: auto; }
-    pre { background: #f3f4f6; padding: 1rem; border-radius: 8px; overflow-x: auto; }
-    button { padding: .5rem .8rem; cursor: pointer; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; color: #1f2937; background: #f9fafb; }
+    main { max-width: 960px; margin: auto; }
+    h1 { margin-bottom: .25rem; }
+    h2 { border-bottom: 2px solid #e5e7eb; padding-bottom: .35rem; margin-top: 2rem; }
+    .bar { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin: 1rem 0; }
+    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 1rem 1.25rem; margin: .75rem 0; }
+    .zone-active { border-left: 5px solid #dc2626; }
+    .zone-lifted { border-left: 5px solid #16a34a; }
+    .muted { color: #6b7280; font-size: .9rem; }
+    .badge { display: inline-block; padding: .1rem .55rem; border-radius: 999px; font-size: .8rem; font-weight: 600; }
+    .badge-active { background: #fee2e2; color: #b91c1c; }
+    .badge-lifted { background: #dcfce7; color: #15803d; }
+    table { border-collapse: collapse; width: 100%; margin-top: .5rem; }
+    th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid #f0f0f0; vertical-align: top; font-size: .92rem; }
+    input, select, button { font-size: .92rem; padding: .4rem .55rem; border: 1px solid #d1d5db; border-radius: 6px; }
+    button { cursor: pointer; background: #2563eb; color: #fff; border-color: #2563eb; }
+    button.secondary { background: #fff; color: #374151; }
+    button.danger { background: #dc2626; border-color: #dc2626; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .row-form { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin: .35rem 0; }
+    .cond-ok { color: #15803d; font-weight: 600; }
+    .cond-no { color: #b91c1c; font-weight: 600; }
+    #result { background: #f3f4f6; padding: 1rem; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; min-height: 1.5rem; }
+    .error { color: #b91c1c; }
+    label { font-size: .88rem; color: #374151; }
   </style>
 </head>
 <body>
 <main>
   <h1>植物病虫害检疫与传播追溯</h1>
-  <p>这是最小演示页面。使用浏览器或 curl 调用 JSON API。</p>
-  <p><button onclick="checkHealth()">检查服务状态</button></p>
+  <div class="bar">
+    <label>当前身份
+      <select id="role">
+        <option value="inspector">检疫员 inspector</option>
+        <option value="quarantine">检疫隔离岗 quarantine</option>
+        <option value="admin">管理员 admin</option>
+        <option value="viewer">查看者 viewer</option>
+      </select>
+    </label>
+    <input id="userId" value="inspector-1" size="14" aria-label="用户ID">
+    <button class="secondary" onclick="checkHealth()">检查服务状态</button>
+    <button class="secondary" onclick="loadAll()">刷新全部</button>
+  </div>
   <pre id="result">等待操作</pre>
-  <h2>常用接口</h2>
-  <pre>GET  /health
-GET  /api/&lt;kind&gt;
-POST /api/&lt;kind&gt;
-GET  /api/entities/&lt;id&gt;
-POST /api/entities/&lt;id&gt;/actions</pre>
+
+  <h2>设施</h2>
+  <div class="card">
+    <div class="row-form">
+      <input id="fName" placeholder="设施名称（如 苗圃中心）">
+      <input id="fAddress" placeholder="地址">
+      <button onclick="createFacility()">登记设施</button>
+    </div>
+    <table id="facilityTable"><thead><tr><th>ID</th><th>名称</th><th>地址</th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <h2>登记疫区</h2>
+  <div class="card">
+    <div class="row-form">
+      <label>疫区编号 <input id="zCode" placeholder="如 Z-2026-001"></label>
+      <label>中心设施 <select id="zCenter"></select></label>
+      <label>生效日期 <input id="zDeclared" type="date"></label>
+    </div>
+    <div class="muted">纳入设施（借过同一批苗、共用过车辆等，每个设施需填写原因）：</div>
+    <div id="zMembers"></div>
+    <div class="row-form">
+      <button class="secondary" type="button" onclick="addMemberRow()">＋ 添加纳入设施</button>
+      <button onclick="createZone()">登记疫区</button>
+    </div>
+  </div>
+
+  <h2>疫区列表</h2>
+  <div id="zones"><div class="muted">加载中…</div></div>
+
+  <h2>检疫批次调运</h2>
+  <div class="card">
+    <div class="row-form">
+      <input id="cCode" placeholder="批次编号">
+      <label>调出设施 <select id="cOrigin"></select></label>
+      <label>调入设施 <select id="cDestination"></select></label>
+      <button onclick="createConsignment()">登记批次</button>
+    </div>
+    <p class="muted">生效疫区会拦住区内批次调往区外；疫区解除后可重新发起调运。</p>
+    <table id="consignmentTable">
+      <thead><tr><th>编号</th><th>状态</th><th>调出</th><th>调入</th><th>操作</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
 </main>
 <script>
-async function checkHealth() {
-  const response = await fetch('/health');
-  document.getElementById('result').textContent = JSON.stringify(await response.json(), null, 2);
+const $ = (id) => document.getElementById(id);
+let facilities = [];
+let zones = [];
+let consignments = [];
+
+async function api(path, options = {}) {
+  const headers = Object.assign({"Content-Type": "application/json"}, options.headers || {}, {
+    "X-User-Id": $("userId").value || "anonymous",
+    "X-Role": $("role").value,
+  });
+  const response = await fetch(path, Object.assign({}, options, {headers}));
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error((payload.type || "Error") + ": " + payload.error);
+  }
+  return payload;
 }
+
+function show(payload) {
+  const node = $("result");
+  node.classList.remove("error");
+  node.textContent = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+}
+function showError(err) {
+  const node = $("result");
+  node.classList.add("error");
+  node.textContent = "✗ " + err.message;
+}
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function facilityName(id) {
+  const found = facilities.find((f) => f.id === id);
+  return found ? found.data.name : id;
+}
+
+function facilityOptions(select, keepValue) {
+  const current = keepValue || select.value;
+  select.innerHTML = '<option value="">— 请选择 —</option>' +
+    facilities.map((f) => `<option value="${f.id}">${f.data.name}（${f.id.slice(0, 8)}）</option>`).join("");
+  if (current) select.value = current;
+}
+
+async function checkHealth() {
+  try { show(await api("/health")); } catch (err) { showError(err); }
+}
+
+async function loadFacilities() {
+  facilities = (await api("/api/facilities")).items;
+  $("facilityTable").querySelector("tbody").innerHTML = facilities.map((f) =>
+    `<tr><td>${f.id}</td><td>${f.data.name}</td><td>${f.data.address || ""}</td></tr>`
+  ).join("") || '<tr><td colspan="3" class="muted">暂无设施</td></tr>';
+  facilityOptions($("zCenter"));
+  facilityOptions($("cOrigin"));
+  facilityOptions($("cDestination"));
+  document.querySelectorAll("#zMembers select").forEach((s) => facilityOptions(s));
+}
+
+async function createFacility() {
+  try {
+    await api("/api/facilities", {method: "POST", body: JSON.stringify({
+      name: $("fName").value, address: $("fAddress").value,
+    })});
+    $("fName").value = ""; $("fAddress").value = "";
+    await loadAll();
+    show("设施已登记");
+  } catch (err) { showError(err); }
+}
+
+function addMemberRow(facilityId) {
+  const wrap = document.createElement("div");
+  wrap.className = "row-form";
+  wrap.innerHTML = `
+    <select class="m-facility"></select>
+    <input class="m-reason" placeholder="纳入原因，如 借过同一批苗 / 共用车辆">
+    <button class="secondary" type="button">移除</button>`;
+  wrap.querySelector("button").onclick = () => wrap.remove();
+  $("zMembers").appendChild(wrap);
+  facilityOptions(wrap.querySelector("select"), facilityId);
+}
+
+async function createZone() {
+  const facilities_ = [...document.querySelectorAll("#zMembers .row-form")].map((row) => ({
+    facility_id: row.querySelector(".m-facility").value,
+    reason: row.querySelector(".m-reason").value,
+  })).filter((item) => item.facility_id);
+  try {
+    const zone = await api("/api/zones", {method: "POST", body: JSON.stringify({
+      code: $("zCode").value,
+      center_facility_id: $("zCenter").value,
+      declared_at: $("zDeclared").value || undefined,
+      facilities: facilities_,
+    })});
+    $("zCode").value = "";
+    $("zMembers").innerHTML = "";
+    await loadAll();
+    show("疫区已登记：" + zone.id);
+  } catch (err) { showError(err); }
+}
+
+function renderConditions(release) {
+  if (release.note) return `<div class="muted">${release.note}</div>`;
+  return release.conditions.map((c) =>
+    `<div class="${c.met ? "cond-ok" : "cond-no"}">${c.met ? "✓" : "✗"} ${c.detail}</div>`
+  ).join("");
+}
+
+function renderZone(detail) {
+  const isActive = detail.status === "active";
+  const rows = detail.facilities.map((f) => `
+    <tr>
+      <td>${f.role === "center" ? "★ 中心设施" : "纳入设施"}</td>
+      <td>${f.name || "(已删除)"}</td>
+      <td>${f.reason}</td>
+    </tr>`).join("");
+  return `
+  <div class="card ${isActive ? "zone-active" : "zone-lifted"}">
+    <div class="bar" style="margin:.25rem 0">
+      <strong>${detail.code}</strong>
+      <span class="badge ${isActive ? "badge-active" : "badge-lifted"}">${isActive ? "生效中" : "已解除"}</span>
+      <span class="muted">生效 ${detail.declared_at || "—"}${detail.lifted_at ? " / 解除 " + detail.lifted_at : ""}</span>
+    </div>
+    <table><thead><tr><th>角色</th><th>设施</th><th>纳入原因</th></tr></thead><tbody>${rows}</tbody></table>
+    <p class="muted">最近一次阳性：${detail.release.last_positive_at || "—"}
+      （已过 ${detail.release.days_since_last_positive == null ? "—" : detail.release.days_since_last_positive} 天，观察期 ${detail.release.observation_days} 天）</p>
+    ${renderConditions(detail.release)}
+    ${isActive ? `
+      <div class="row-form" style="margin-top:.75rem">
+        <select class="rp-facility"></select>
+        <input class="rp-at" type="date" value="${today()}">
+        <input class="rp-reason" placeholder="新增阳性原因（可选）">
+        <button class="danger" onclick="reportPositive('${detail.id}', this)">上报阳性设施（重置21天）</button>
+        <button onclick="liftZone('${detail.id}', this)">解除疫区</button>
+      </div>` : ""}
+  </div>`;
+}
+
+async function loadZones() {
+  zones = (await api("/api/zones")).items;
+  const container = $("zones");
+  if (!zones.length) {
+    container.innerHTML = '<div class="muted">暂无疫区</div>';
+    return;
+  }
+  const details = await Promise.all(
+    zones.map((z) => api(`/api/zones/${z.id}/detail`))
+  );
+  details.sort((a, b) => (a.status === b.status ? 0 : a.status === "active" ? -1 : 1));
+  container.innerHTML = details.map(renderZone).join("");
+  container.querySelectorAll(".rp-facility").forEach((s) => facilityOptions(s));
+}
+
+async function reportPositive(zoneId, button) {
+  const card = button.closest(".card");
+  try {
+    await api(`/api/entities/${zoneId}/actions`, {method: "POST", body: JSON.stringify({
+      action: "report_positive",
+      data: {
+        facility_id: card.querySelector(".rp-facility").value,
+        positive_at: card.querySelector(".rp-at").value || undefined,
+        reason: card.querySelector(".rp-reason").value || undefined,
+      },
+    })});
+    await loadAll();
+    show("阳性设施已上报，21天观察期重新计算");
+  } catch (err) { showError(err); }
+}
+
+async function liftZone(zoneId) {
+  try {
+    await api(`/api/entities/${zoneId}/actions`, {method: "POST", body: JSON.stringify({
+      action: "lift", data: {},
+    })});
+    await loadAll();
+    show("疫区已解除，原被拦截批次可重新发起调运");
+  } catch (err) { showError(err); }
+}
+
+async function loadConsignments() {
+  consignments = (await api("/api/consignments")).items;
+  $("consignmentTable").querySelector("tbody").innerHTML = consignments.map((c) => `
+    <tr>
+      <td>${c.data.code}</td>
+      <td>${c.status}</td>
+      <td>${c.data.origin_facility_id ? facilityName(c.data.origin_facility_id) : (c.data.origin || "—")}</td>
+      <td>${c.data.destination_facility_id ? facilityName(c.data.destination_facility_id) : (c.data.destination || "—")}</td>
+      <td>${c.status === "declared" || c.status === "released"
+        ? `<button onclick="dispatch('${c.id}', this)">发起调运</button>` : ""}</td>
+    </tr>`).join("") || '<tr><td colspan="5" class="muted">暂无批次</td></tr>';
+}
+
+async function createConsignment() {
+  const origin = $("cOrigin").value;
+  const destination = $("cDestination").value;
+  try {
+    await api("/api/consignments", {method: "POST", body: JSON.stringify({
+      code: $("cCode").value,
+      origin: facilityName(origin), destination: facilityName(destination),
+      origin_facility_id: origin || undefined,
+      destination_facility_id: destination || undefined,
+    })});
+    $("cCode").value = "";
+    await loadAll();
+    show("批次已登记");
+  } catch (err) { showError(err); }
+}
+
+async function dispatch(id) {
+  try {
+    const updated = await api(`/api/entities/${id}/actions`, {method: "POST", body: JSON.stringify({
+      action: "dispatch", data: {},
+    })});
+    await loadAll();
+    show("调运成功，批次状态：" + updated.status);
+  } catch (err) { showError(err); }
+}
+
+async function loadAll() {
+  try {
+    await loadFacilities();
+    await loadZones();
+    await loadConsignments();
+  } catch (err) { showError(err); }
+}
+
+$("zDeclared").value = today();
+loadAll();
 </script>
 </body>
 </html>

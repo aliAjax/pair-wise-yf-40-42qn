@@ -107,7 +107,11 @@ class SQLiteRepository:
         return [
             entity
             for entity in self.list_entities(kind=kind)
-            if (entity["id"] == value if field == "id" else entity["data"].get(field) == value)
+            if (
+                entity.get(field) == value
+                if field in ("id", "kind", "status", "version")
+                else entity["data"].get(field) == value
+            )
         ]
 
     def update_entity(self, entity_id, expected_version, status, data):

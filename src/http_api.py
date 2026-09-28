@@ -85,6 +85,13 @@ def create_handler(service, rules, static_dir):
                         return self._send_html(200, handle.read())
                 if parts == ["api", "audit"]:
                     return self._send(200, {"items": service.audit_log()})
+                if len(parts) == 4 and parts[0] == "api" and parts[3] == "detail":
+                    normalized = rules.normalize_kind(parts[1])
+                    if normalized != "zone":
+                        raise NotFoundError("not found")
+                    query = parse_qs(parsed.query)
+                    as_of = query.get("as_of", [None])[0]
+                    return self._send(200, service.zone_detail(parts[2], as_of))
                 if len(parts) == 3 and parts[:2] == ["api", "entities"]:
                     return self._send(200, service.get(parts[2]))
                 if len(parts) >= 2 and parts[0] == "api":
