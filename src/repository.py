@@ -104,6 +104,8 @@ class SQLiteRepository:
         return [self._entity_from_row(row) for row in rows]
 
     def find_entities(self, kind, field, value):
+        if field == "status":
+            return self.list_entities(kind=kind, status=value)
         return [
             entity
             for entity in self.list_entities(kind=kind)

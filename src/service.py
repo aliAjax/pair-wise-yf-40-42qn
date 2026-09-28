@@ -2,7 +2,7 @@ from uuid import uuid4
 
 from .audit import AuditTrail
 from .domain import ConflictError, NotFoundError
-from .rules import RuleEngine
+from .rules import RuleEngine, zone_release_readiness
 
 
 class DomainService:
@@ -13,6 +13,25 @@ class DomainService:
 
     def _lookup(self, kind, field, value):
         return self.repository.find_entities(self.rules.normalize_kind(kind), field, value)
+
+    def _blocked_consignments(self, zone):
+        facility_ids = set(zone["data"].get("facility_ids", []))
+        blocked = []
+        for consignment in self.repository.list_entities(kind="consignment"):
+            if consignment["status"] in ("shipped", "destroyed"):
+                continue
+            origin = consignment["data"].get("origin_facility_id")
+            destination = consignment["data"].get("destination_facility_id")
+            if origin in facility_ids and destination not in facility_ids:
+                blocked.append(consignment["id"])
+        return blocked
+
+    def _view(self, entity):
+        if entity and entity["kind"] == "zone":
+            entity["data"]["release"] = zone_release_readiness(entity)
+            if entity["status"] == "active":
+                entity["data"]["blocked_consignment_ids"] = self._blocked_consignments(entity)
+        return entity
 
     def health(self):
         return {"status": "ok" if self.repository.ping() else "error"}
@@ -25,7 +44,7 @@ class DomainService:
             if existing:
                 entity = self.repository.get_entity(existing)
                 if entity:
-                    return entity
+                    return self._view(entity)
         self.rules.validate_create(actor, kind, payload, self._lookup)
         entity_id = str(payload.pop("id", "") or uuid4())
         if self.repository.get_entity(entity_id):
@@ -35,7 +54,7 @@ class DomainService:
         self.audit.record(entity_id, actor, "create", None, status, {"kind": kind})
         if idempotency_key:
             self.repository.save_idempotency(actor.user_id, idempotency_key, entity_id)
-        return entity
+        return self._view(entity)
 
     def transition(self, actor, entity_id, action, data=None, expected_version=None):
         entity = self.repository.get_entity(entity_id)
@@ -56,18 +75,18 @@ class DomainService:
             updated["status"],
             {"patch": patch},
         )
-        return updated
+        return self._view(updated)
 
     def get(self, entity_id):
         entity = self.repository.get_entity(entity_id)
         if not entity:
             raise NotFoundError("entity not found: " + entity_id)
-        return entity
+        return self._view(entity)
 
     def list(self, kind=None, status=None):
         if kind:
             kind = self.rules.normalize_kind(kind)
-        return self.repository.list_entities(kind=kind, status=status)
+        return [self._view(entity) for entity in self.repository.list_entities(kind=kind, status=status)]
 
     def audit_log(self, entity_id=None):
         return self.repository.list_audit(entity_id=entity_id)

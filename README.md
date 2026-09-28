@@ -24,7 +24,16 @@ python3 app.py --db ./data.db --port 8306
 
 ## 核心对象
 
-- `consignment`：检疫批次；`facility`：温室、苗圃或下游种植点。
+- `consignment`：检疫批次；`facility`：温室、苗圃或下游种植点；`zone`：疫区。
+
+## 疫区管理
+
+- 检疫员（`inspector`/`admin`）通过`POST /api/zones`登记疫区：必填`zone_no`（疫区编号，全局唯一）、`center_facility_id`（中心设施）、`facility_ids`（纳入设施）、`reason`（纳入原因）；可选`facility_reasons`按设施单独登记原因、`positive_since`指定中心设施阳性日期（默认当天）。中心设施自动并入纳入设施，并记为首个阳性事件。
+- 疫区登记即生效（`active`）。生效期间，起点设施在区内而终点设施在区外的批次，`ship`调运动作会被拒绝并提示拦截疫区；区内互调不受影响。
+- `mark_positive`动作登记区内新增阳性：新阳性设施自动追加进纳入设施，最近阳性日期随之更新，二十一天观察期重新计算。
+- `lift`动作解除疫区：须满足最近一次阳性满21天且观察期内无新增阳性设施，否则返回未满足的条件。解除后（`lifted`）原被拦批次可重新发起`ship`调运。
+- 疫区视图（`GET /api/zones`、`GET /api/entities/<id>`）的`data.release`字段实时给出解除条件：已过天数、是否满21天、观察期内新增阳性设施、最早可解除日期；生效中的疫区还带`blocked_consignment_ids`（当前被拦批次）。
+- 批次可携带`origin_facility_id`/`destination_facility_id`关联设施；`ship`动作（`declared`/`released`→`shipped`）会复用批次上已登记的设施，也可在动作数据里补充。
 
 ## 主要接口
 
